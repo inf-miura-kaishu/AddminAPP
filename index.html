@@ -1,0 +1,1277 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>クイズアプリ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .option-label.selected { background-color: #e0f2fe; border-color: #7dd3fc; }
+        .option-label.correct { background-color: #dcfce7; border-color: #86efac; color: #166534; }
+        .option-label.incorrect { background-color: #fee2e2; border-color: #fca5a5; color: #b91c1c; }
+        .btn { padding: 0.5rem 1rem; border-radius: 0.375rem; font-weight: 600; transition: background-color 0.2s; }
+        .btn-primary { background-color: #2563eb; color: white; }
+        .btn-primary:hover { background-color: #1d4ed8; }
+        .btn-primary:disabled { background-color: #93c5fd; cursor: not-allowed; opacity: 0.7; }
+        .btn-secondary { background-color: #4b5563; color: white; }
+        .btn-secondary:hover { background-color: #374151; }
+        .btn-secondary:disabled { background-color: #a1a1aa; cursor: not-allowed; opacity: 0.7; }
+        .btn-info { background-color: #0ea5e9; color: white; }
+        .btn-info:hover { background-color: #0284c7; }
+        .btn-neutral { background-color: #e5e7eb; color: #374151; }
+        .btn-neutral:hover { background-color: #d1d5db; }
+        .category-title-container {
+            display: flex;
+            align-items: baseline;
+            margin-top: 1rem;
+            padding-bottom: 0.25rem;
+            border-bottom-width: 1px;
+            border-color: #d1d5db;
+        }
+        .category-title-list {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 0;
+        }
+        .category-stats {
+            font-size: 0.875rem;
+            color: #4b5563;
+            margin-left: 0.75rem;
+        }
+        .tab-btn {
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem 0.375rem 0 0;
+            font-weight: 600;
+            background-color: #e5e7eb;
+            color: #4b5563;
+            border: 1px solid #d1d5db;
+            border-bottom: none;
+            margin-right: -1px;
+            cursor: pointer;
+        }
+        .tab-btn.active {
+            background-color: #ffffff;
+            color: #1f2937;
+            border-bottom: 1px solid #ffffff;
+            position: relative;
+            z-index: 10;
+        }
+        .tab-content {
+            border: 1px solid #d1d5db;
+            border-top: none;
+            padding: 1rem;
+            background-color: #ffffff;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <div id="appContainer" class="container mx-auto p-4">
+        <div id="fileLoadSection" class="mb-6 p-4 bg-white shadow-md rounded-lg">
+            <h2 class="text-xl font-semibold mb-3 text-gray-700">問題ファイル</h2>
+            <p id="fileLoadStatus" class="text-sm text-gray-600">「問題集.json」を自動ロード中...</p>
+        </div>
+
+        <div id="modeSelectionView" class="text-center hidden">
+            <h2 class="text-2xl font-semibold mb-6 text-gray-800">出題モードを選択してください</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div class="p-4 bg-white shadow rounded-lg">
+                    <h3 class="text-lg font-semibold mb-2 text-gray-700">全カテゴリから出題</h3>
+                    <label for="numQuestionsAll" class="block text-sm font-medium text-gray-700 mb-1">出題数 (最大 <span id="maxTotalQuestionsSpan">0</span> 問):</label>
+                    <input type="number" id="numQuestionsAll" min="1" value="10" class="form-input block w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 mb-3 disabled:bg-gray-200" disabled>
+                    <button id="startAllWeightedBtn" class="btn btn-primary w-full disabled:opacity-50" disabled>開始</button>
+                </div>
+
+                <div class="p-4 bg-white shadow rounded-lg">
+                    <h3 class="text-lg font-semibold mb-2 text-gray-700">カテゴリを選択して出題</h3>
+                     <select id="categorySelector" class="form-select block w-full mb-2 p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-200" disabled>
+                        <option value="">カテゴリを選択...</option>
+                    </select>
+                    <label for="numQuestionsCategory" class="block text-sm font-medium text-gray-700 mb-1">出題数 (最大 <span id="maxCategoryQuestionsSpan">0</span> 問):</label>
+                    <input type="number" id="numQuestionsCategory" min="1" value="5" class="form-input block w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 mb-3 disabled:bg-gray-200" disabled>
+                    <button id="startSelectedCategoryBtn" class="btn btn-secondary w-full disabled:opacity-50" disabled>選択したカテゴリで開始</button>
+                    <p id="noCategoriesMessage" class="text-gray-500 text-sm mt-2 hidden">カテゴリ情報なし</p>
+                </div>
+
+                <div class="p-4 bg-white shadow rounded-lg flex flex-col justify-center">
+                    <h3 class="text-lg font-semibold mb-2 text-gray-700">解答履歴</h3>
+                    <button id="viewProblemListBtn" class="btn btn-info w-full disabled:opacity-50" disabled>問題一覧</button>
+                </div>
+            </div>
+             <button id="resetProgressBtn" class="btn btn-neutral mt-4">進捗をリセット</button> <!-- Added reset button -->
+        </div>
+
+
+        <div id="quizView" class="p-6 bg-white shadow-xl rounded-lg hidden">
+            <div class="flex justify-between items-center mb-3">
+                <div id="currentQuizModeInfo" class="text-sm text-gray-600"></div>
+                <div id="questionCounter" class="text-sm text-gray-600"></div>
+            </div>
+            <h2 id="questionText" class="text-2xl font-semibold mb-6 text-gray-800"></h2>
+            <div id="optionsContainer" class="space-y-3 mb-6"></div>
+            <div id="feedback" class="p-4 mb-4 border rounded-md hidden">
+                <p id="feedbackText" class="font-semibold"></p>
+            </div>
+            <p id="explanation" class="text-gray-700 mb-6 p-3 bg-gray-50 rounded-md hidden"></p>
+            <div class="flex flex-col sm:flex-row justify-between items-center space-y-3 sm:space-y-0">
+                <button id="submitAnswerBtn" class="btn btn-primary">解答を送信</button>
+                <button id="retryQuestionBtn" class="btn btn-info hidden">この問題に再挑戦</button>
+                <button id="nextQuestionBtn" class="btn btn-secondary hidden">次の問題へ</button>
+                <button id="backToProblemListBtn" class="btn btn-neutral hidden">問題一覧に戻る</button>
+                <button id="backToModeSelectionBtn" class="btn btn-neutral">モード選択に戻る</button>
+            </div>
+        </div>
+
+        <div id="problemListView" class="p-4 bg-white shadow-lg rounded-lg hidden">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-semibold text-gray-800">問題一覧</h2>
+                <button id="backToModeSelectionFromListBtn" class="btn btn-neutral">モード選択に戻る</button>
+            </div>
+            <div class="mb-4 border-b border-gray-200">
+                <nav class="flex -mb-px">
+                    <button id="tabAnsweredProblems" class="tab-btn active">解答済み問題</button>
+                    <button id="tabAllProblems" class="tab-btn">全問題</button>
+                </nav>
+            </div>
+            <div id="tabContentAnswered" class="tab-content">
+                <button id="retryIncorrectBtn" class="btn btn-info mb-4 hidden">不正解問題に再挑戦</button>
+                <p id="noProblemsAnsweredMessage" class="text-gray-500 hidden">解答済みの問題はありません。</p>
+                <div id="problemListCategorized" class="space-y-4">
+                    <!-- Categorized answered problem list items will be dynamically inserted here -->
+                </div>
+            </div>
+            <div id="tabContentAll" class="tab-content hidden">
+                 <p id="noProblemsAllMessage" class="text-gray-500 hidden">問題がロードされていません。</p>
+                <div id="problemListAllContainer" class="space-y-4">
+                    <!-- All problems categorized list items will be dynamically inserted here -->
+                </div>
+            </div>
+        </div>
+
+
+        <div id="messageBox" class="fixed top-5 right-5 bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded shadow-lg hidden z-50 transition-opacity duration-300 opacity-0">
+            <span id="messageBoxText"></span>
+            <button class="ml-4 text-yellow-800 font-bold hover:text-yellow-900" aria-label="閉じる">X</button>
+        </div>
+    </div>
+
+    <script type="module">
+        // Firebase imports (for potential future persistence, not used in current version)
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global variables for Firebase (provided by Canvas environment)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let app, db, auth, userId;
+        let isAuthReady = false;
+
+        // Initialize Firebase
+        if (Object.keys(firebaseConfig).length > 0) {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            onAuthStateChanged(auth, async (user) => {
+                if (user) { userId = user.uid; console.log("Firebase authenticated. User ID:", userId); }
+                else { try { if (initialAuthToken) { await signInWithCustomToken(auth, initialAuthToken); } else { await signInAnonymously(auth); } userId = auth.currentUser?.uid || crypto.randomUUID(); console.log("Firebase signed in. User ID:", userId); }
+                catch (error) { console.error("Firebase authentication error:", error); userId = crypto.randomUUID(); } }
+                isAuthReady = true;
+            });
+        } else { console.warn("Firebase config not provided. Running in-memory without persistence."); userId = crypto.randomUUID(); isAuthReady = true; }
+
+        // --- LocalStorage Keys ---
+        const QUIZ_HISTORY_KEY = 'quizApp_quizHistory';
+        const ANSWERED_IDS_KEY = 'quizApp_answeredQuestionIds';
+
+        // --- Message Box Functionality ---
+        const messageBox = document.getElementById('messageBox');
+        const messageBoxText = document.getElementById('messageBoxText');
+        function showMessageBox(message, duration = 3000) {
+            if (!messageBox || !messageBoxText) return;
+            messageBoxText.textContent = message;
+            messageBox.classList.remove('hidden');
+            requestAnimationFrame(() => {
+                messageBox.classList.remove('opacity-0');
+                messageBox.classList.add('opacity-100');
+            });
+            setTimeout(() => {
+                hideMessageBox();
+            }, duration);
+        }
+        function hideMessageBox() {
+            if (!messageBox) return;
+            messageBox.classList.remove('opacity-100');
+            messageBox.classList.add('opacity-0');
+            setTimeout(() => {
+                 messageBox.classList.add('hidden');
+            }, 300);
+        }
+        if (messageBox) {
+            messageBox.addEventListener('click', (event) => { if (event.target.tagName === 'BUTTON' || event.target.closest('button')) { hideMessageBox(); } });
+        }
+
+
+        // --- Question Data & Category Weights ---
+        let questions = [];
+        let originalQuestionOrder = [];
+        let allCategories = {};
+        const defaultCategoryWeights = {
+            "設定とセットアップ": 0.20,
+            "オブジェクトマネージャとLightning アプリケーションビルダー": 0.20,
+            "セールス＆マーケティングアプリケーション": 0.12,
+            "サービス＆サポートアプリケーション": 0.11,
+            "生産性向上とコラボレーション": 0.07,
+            "データ管理＆分析": 0.14,
+            "ワークフロー/プロセスの自動化": 0.16
+        };
+
+        // --- Global State Variables ---
+        let currentQuestion = null;
+        let quizHistory = [];
+        let answeredQuestionIds = new Set(); 
+        let currentQuizMode = null; 
+        let currentSelectedCategory = null;
+        let isRetryingQuestion = false; 
+
+        let questionsToAskInSession = 0;    
+        let questionsAnsweredInSession = 0; 
+        
+        let activeProblemListTab = 'answered';
+        let incorrectQuestionsForRetrySession = []; 
+        let questionsAnsweredInCurrentQuizSession = new Set(); 
+
+        // --- DOM Elements ---
+        const fileLoadSection = document.getElementById('fileLoadSection');
+        const modeSelectionView = document.getElementById('modeSelectionView');
+        const categorySelector = document.getElementById('categorySelector');
+        const noCategoriesMessage = document.getElementById('noCategoriesMessage');
+        const startAllWeightedBtn = document.getElementById('startAllWeightedBtn');
+        const startSelectedCategoryBtn = document.getElementById('startSelectedCategoryBtn');
+        const viewProblemListBtn = document.getElementById('viewProblemListBtn');
+        const numQuestionsAllInput = document.getElementById('numQuestionsAll');
+        const maxTotalQuestionsSpan = document.getElementById('maxTotalQuestionsSpan');
+        const numQuestionsCategoryInput = document.getElementById('numQuestionsCategory');
+        const maxCategoryQuestionsSpan = document.getElementById('maxCategoryQuestionsSpan');
+        const resetProgressBtn = document.getElementById('resetProgressBtn'); // Added reset button
+
+
+        const quizView = document.getElementById('quizView');
+        const problemListView = document.getElementById('problemListView');
+        const currentQuizModeInfo = document.getElementById('currentQuizModeInfo');
+        const questionCounter = document.getElementById('questionCounter');
+        const questionText = document.getElementById('questionText');
+        const optionsContainer = document.getElementById('optionsContainer');
+        const feedback = document.getElementById('feedback');
+        const feedbackText = document.getElementById('feedbackText');
+        const explanationDiv = document.getElementById('explanation');
+        const submitAnswerBtn = document.getElementById('submitAnswerBtn');
+        const nextQuestionBtn = document.getElementById('nextQuestionBtn');
+        const retryQuestionBtn = document.getElementById('retryQuestionBtn');
+        const backToProblemListBtn = document.getElementById('backToProblemListBtn'); 
+        const backToModeSelectionBtn = document.getElementById('backToModeSelectionBtn');
+        const backToModeSelectionFromListBtn = document.getElementById('backToModeSelectionFromListBtn');
+
+        const tabAnsweredProblemsBtn = document.getElementById('tabAnsweredProblems');
+        const tabAllProblemsBtn = document.getElementById('tabAllProblems');
+        const tabContentAnswered = document.getElementById('tabContentAnswered');
+        const tabContentAll = document.getElementById('tabContentAll');
+        const noProblemsAnsweredMessageEl = document.getElementById('noProblemsAnsweredMessage');
+        const noProblemsAllMessageEl = document.getElementById('noProblemsAllMessage');
+        const problemListCategorized = document.getElementById('problemListCategorized');
+        const problemListAllContainer = document.getElementById('problemListAllContainer');
+        const retryIncorrectBtn = document.getElementById('retryIncorrectBtn');
+
+        const fileLoadStatus = document.getElementById('fileLoadStatus');
+
+        // --- LocalStorage Functions ---
+        function saveProgress() {
+            try {
+                localStorage.setItem(QUIZ_HISTORY_KEY, JSON.stringify(quizHistory));
+                localStorage.setItem(ANSWERED_IDS_KEY, JSON.stringify(Array.from(answeredQuestionIds)));
+                 console.log("Progress saved to LocalStorage.");
+            } catch (e) {
+                console.error("Error saving progress to LocalStorage:", e);
+                showMessageBox("進捗の保存に失敗しました。LocalStorageの容量がいっぱいか、機能が無効になっている可能性があります。", 5000);
+            }
+        }
+
+        function loadProgress() {
+            try {
+                const savedHistory = localStorage.getItem(QUIZ_HISTORY_KEY);
+                const savedAnsweredIds = localStorage.getItem(ANSWERED_IDS_KEY);
+
+                if (savedHistory) {
+                    const parsedHistory = JSON.parse(savedHistory);
+                    // Basic validation: check if it's an array
+                    if (Array.isArray(parsedHistory)) {
+                        quizHistory = parsedHistory;
+                    } else {
+                        console.warn("Invalid quizHistory found in LocalStorage. Starting fresh.");
+                        quizHistory = [];
+                    }
+                }
+                if (savedAnsweredIds) {
+                     const parsedIds = JSON.parse(savedAnsweredIds);
+                    // Basic validation: check if it's an array
+                    if (Array.isArray(parsedIds)) {
+                        answeredQuestionIds = new Set(parsedIds);
+                    } else {
+                        console.warn("Invalid answeredQuestionIds found in LocalStorage. Starting fresh.");
+                        answeredQuestionIds = new Set();
+                    }
+                }
+                console.log("Progress loaded from LocalStorage.");
+            } catch (e) {
+                console.error("Error loading progress from LocalStorage:", e);
+                // If loading fails, start fresh to avoid app crashing
+                quizHistory = [];
+                answeredQuestionIds = new Set();
+                showMessageBox("進捗の読み込みに失敗しました。新規の状態で開始します。", 5000);
+            }
+        }
+
+        function clearProgress() {
+            try {
+                localStorage.removeItem(QUIZ_HISTORY_KEY);
+                localStorage.removeItem(ANSWERED_IDS_KEY);
+                quizHistory = [];
+                answeredQuestionIds.clear();
+                questionsAnsweredInCurrentQuizSession.clear(); // Also clear current session progress
+                // Potentially reset other quiz state variables if needed
+                currentQuestion = null;
+                questionsToAskInSession = 0;
+                questionsAnsweredInSession = 0;
+
+                // Re-render lists if currently viewing them
+                if (problemListView && !problemListView.classList.contains('hidden')) {
+                    renderAnsweredProblemListCategorized();
+                    renderAllProblemsListCategorized();
+                }
+                // Update mode selection view if necessary (e.g., disable buttons if progress was essential)
+                // For now, just a message
+                showMessageBox("進捗がリセットされました。", 3000);
+                console.log("Progress cleared from LocalStorage and memory.");
+            } catch (e) {
+                console.error("Error clearing progress from LocalStorage:", e);
+                showMessageBox("進捗のリセットに失敗しました。", 5000);
+            }
+        }
+
+
+        // --- File Processing Logic (reusable) ---
+        function processQuestionsJson(jsonContent) {
+            try {
+                const parsedQuestions = JSON.parse(jsonContent);
+                if (Array.isArray(parsedQuestions) && parsedQuestions.length > 0 &&
+                    parsedQuestions.every(q => q.id && q.question && Array.isArray(q.options) && Array.isArray(q.correctAnswers) && q.explanation && q.type && q.category !== undefined)) {
+                    questions = parsedQuestions;
+                    originalQuestionOrder = questions.map(q => q.id);
+                    allCategories = {};
+
+                    questions.forEach(q => {
+                        const catName = q.category || "カテゴリなし";
+                        if (!allCategories[catName]) {
+                            allCategories[catName] = {
+                                questionIds: [],
+                                weight: defaultCategoryWeights[catName] !== undefined ? defaultCategoryWeights[catName] : -1
+                            };
+                        }
+                        allCategories[catName].questionIds.push(q.id);
+                    });
+
+                    const presentCategoryNames = Object.keys(allCategories);
+                    const categoriesWithoutDefaultWeight = presentCategoryNames.filter(catName => allCategories[catName].weight === -1);
+                    let totalDefaultWeightUsed = presentCategoryNames
+                        .filter(catName => allCategories[catName].weight !== -1)
+                        .reduce((sum, catName) => sum + allCategories[catName].weight, 0);
+
+                    let remainingWeightToDistribute = 1.0 - totalDefaultWeightUsed;
+                    if (remainingWeightToDistribute < 0) remainingWeightToDistribute = 0;
+
+                    if (categoriesWithoutDefaultWeight.length > 0 ) {
+                        if (remainingWeightToDistribute > 0) {
+                            const evenShare = remainingWeightToDistribute / categoriesWithoutDefaultWeight.length;
+                            categoriesWithoutDefaultWeight.forEach(catName => allCategories[catName].weight = evenShare);
+                        } else if (Object.keys(defaultCategoryWeights).length === 0 || totalDefaultWeightUsed === 0) {
+                            const evenShareAmongAll = presentCategoryNames.length > 0 ? 1.0 / presentCategoryNames.length : 0;
+                            presentCategoryNames.forEach(catName => allCategories[catName].weight = evenShareAmongAll);
+                        } else {
+                            categoriesWithoutDefaultWeight.forEach(catName => allCategories[catName].weight = 0.00001); 
+                        }
+                    }
+                    let currentTotalWeight = presentCategoryNames.reduce((sum, catName) => sum + allCategories[catName].weight, 0);
+                    if (currentTotalWeight > 0 && currentTotalWeight !== 1.0) {
+                        presentCategoryNames.forEach(catName => allCategories[catName].weight /= currentTotalWeight);
+                    }
+
+                    // Load progress *after* questions are processed, so we can validate history against current questions if needed
+                    loadProgress(); 
+
+                    populateCategorySelector();
+                    // quizHistory and answeredQuestionIds are now loaded by loadProgress()
+                    currentQuestion = null;
+                    if (fileLoadStatus) {
+                        fileLoadStatus.textContent = `ロード完了: ${questions.length}問の問題が読み込まれました。カテゴリ数: ${Object.keys(allCategories).length}。`;
+                        fileLoadStatus.classList.remove('text-red-500'); fileLoadStatus.classList.add('text-green-600');
+                    }
+
+                    if (numQuestionsAllInput) {
+                        numQuestionsAllInput.max = questions.length.toString();
+                        numQuestionsAllInput.value = Math.min(10, questions.length > 0 ? questions.length : 10).toString();
+                        numQuestionsAllInput.disabled = questions.length === 0;
+                    }
+                    if (maxTotalQuestionsSpan) maxTotalQuestionsSpan.textContent = questions.length.toString();
+
+
+                    if (startAllWeightedBtn) startAllWeightedBtn.disabled = questions.length === 0;
+                    if (categorySelector) categorySelector.disabled = !(questions.length > 0 && Object.keys(allCategories).length > 0);
+                    if (viewProblemListBtn) viewProblemListBtn.disabled = questions.length === 0;
+                    if (numQuestionsCategoryInput) numQuestionsCategoryInput.disabled = true;
+
+
+                    showView('modeSelection');
+                } else {
+                    throw new Error('ファイル形式が不正か、必須キー(id, question, options, correctAnswers, explanation, type, category)が不足しています。');
+                }
+            } catch (error) {
+                console.error('ファイル処理エラー:', error);
+                if (fileLoadStatus) {
+                    fileLoadStatus.textContent = `エラー: ${error.message} JSON形式を確認してください。`;
+                    fileLoadStatus.classList.add('text-red-500'); fileLoadStatus.classList.remove('text-green-600');
+                }
+                resetQuizStateAfterFileError(); // This will also clear in-memory progress
+            }
+        }
+
+        function resetQuizStateAfterFileError() {
+            questions = []; originalQuestionOrder = []; allCategories = {}; 
+            // Clear in-memory progress as well, as it might be tied to a failed file load
+            quizHistory = [];
+            answeredQuestionIds.clear();
+            questionsAnsweredInCurrentQuizSession.clear();
+            currentQuestion = null; currentQuizMode = null; currentSelectedCategory = null;
+            questionsToAskInSession = 0; questionsAnsweredInSession = 0;
+            
+
+            if (startAllWeightedBtn) startAllWeightedBtn.disabled = true;
+            if (categorySelector) { categorySelector.innerHTML = '<option value="">カテゴリを選択...</option>'; categorySelector.disabled = true; }
+            if (startSelectedCategoryBtn) startSelectedCategoryBtn.disabled = true;
+            if (viewProblemListBtn) viewProblemListBtn.disabled = true;
+            if (retryIncorrectBtn) { retryIncorrectBtn.classList.add('hidden'); retryIncorrectBtn.disabled = true; }
+
+
+            if (noCategoriesMessage) { noCategoriesMessage.classList.remove('hidden'); noCategoriesMessage.textContent = '問題ファイルからカテゴリ情報を読み込めませんでした。';}
+
+            if (numQuestionsAllInput) {
+                numQuestionsAllInput.value = "10"; numQuestionsAllInput.max = "10"; numQuestionsAllInput.disabled = true;
+            }
+            if (maxTotalQuestionsSpan) maxTotalQuestionsSpan.textContent = "0";
+            if (numQuestionsCategoryInput) {
+                numQuestionsCategoryInput.value = "5"; numQuestionsCategoryInput.max = "5"; numQuestionsCategoryInput.disabled = true;
+            }
+            if (maxCategoryQuestionsSpan) maxCategoryQuestionsSpan.textContent = "0";
+
+
+            showView('modeSelection');
+        }
+
+        function populateCategorySelector() {
+            if (!categorySelector || !numQuestionsCategoryInput || !maxCategoryQuestionsSpan) return;
+            categorySelector.innerHTML = '<option value="">カテゴリを選択...</option>';
+            const categoryNames = Object.keys(allCategories).sort();
+
+            if (categoryNames.length > 0) {
+                categoryNames.forEach(catName => {
+                    const option = document.createElement('option');
+                    option.value = catName;
+                    option.textContent = `${catName} (${allCategories[catName].questionIds.length}問)`;
+                    categorySelector.appendChild(option);
+                });
+                if (noCategoriesMessage) noCategoriesMessage.classList.add('hidden');
+                categorySelector.disabled = false;
+                numQuestionsCategoryInput.disabled = true; 
+                if (startSelectedCategoryBtn) startSelectedCategoryBtn.disabled = true;
+            } else {
+                if (noCategoriesMessage) {noCategoriesMessage.textContent = '問題ファイルに有効なカテゴリが見つかりませんでした。'; noCategoriesMessage.classList.remove('hidden');}
+                categorySelector.disabled = true;
+                numQuestionsCategoryInput.disabled = true;
+                numQuestionsCategoryInput.value = "5";
+                maxCategoryQuestionsSpan.textContent = "0";
+                if (startSelectedCategoryBtn) startSelectedCategoryBtn.disabled = true;
+            }
+        }
+
+        if (categorySelector) {
+            categorySelector.addEventListener('change', () => {
+                const selectedCatName = categorySelector.value;
+                if (selectedCatName && allCategories[selectedCatName] && numQuestionsCategoryInput && maxCategoryQuestionsSpan) {
+                    const catQuestionsCount = allCategories[selectedCatName].questionIds.length;
+                    
+                    maxCategoryQuestionsSpan.textContent = catQuestionsCount.toString();
+                    numQuestionsCategoryInput.max = catQuestionsCount.toString();
+                    numQuestionsCategoryInput.value = Math.min(5, catQuestionsCount > 0 ? catQuestionsCount : 5).toString();
+                    numQuestionsCategoryInput.disabled = catQuestionsCount === 0;
+                    if (startSelectedCategoryBtn) {
+                        startSelectedCategoryBtn.disabled = catQuestionsCount === 0;
+                    }
+                } else {
+                    if (numQuestionsCategoryInput) {
+                        numQuestionsCategoryInput.disabled = true;
+                        numQuestionsCategoryInput.value = "5";
+                        numQuestionsCategoryInput.max = "5";
+                    }
+                    if (maxCategoryQuestionsSpan) maxCategoryQuestionsSpan.textContent = "0";
+                    if (startSelectedCategoryBtn) startSelectedCategoryBtn.disabled = true;
+                }
+            });
+        }
+
+
+        // --- View Management ---
+        function showView(viewId) {
+            if (modeSelectionView) modeSelectionView.classList.add('hidden');
+            if (quizView) quizView.classList.add('hidden');
+            if (problemListView) problemListView.classList.add('hidden');
+
+            if (fileLoadSection) {
+                if (viewId === 'quiz' || viewId === 'problemList') {
+                    fileLoadSection.classList.add('hidden');
+                } else {
+                    fileLoadSection.classList.remove('hidden');
+                }
+            }
+
+            if (viewId === 'quiz') {
+                if (backToProblemListBtn) {
+                    if (currentQuizMode === 'review' || currentQuizMode === 'retry_incorrect') {
+                        backToProblemListBtn.classList.remove('hidden');
+                    } else {
+                        backToProblemListBtn.classList.add('hidden');
+                    }
+                }
+                if (backToModeSelectionBtn) {
+                    if (currentQuizMode !== 'review' && currentQuizMode !== 'retry_incorrect') {
+                        backToModeSelectionBtn.classList.remove('hidden');
+                    } else {
+                        backToModeSelectionBtn.classList.add('hidden');
+                    }
+                }
+            } else { 
+                 if (backToProblemListBtn) backToProblemListBtn.classList.add('hidden');
+            }
+
+
+            if (viewId === 'modeSelection') {
+                if (modeSelectionView) modeSelectionView.classList.remove('hidden');
+                if (backToModeSelectionBtn) backToModeSelectionBtn.classList.remove('hidden');
+
+
+                const fileLoaded = questions.length > 0;
+                if (numQuestionsAllInput) numQuestionsAllInput.disabled = !fileLoaded;
+                if (startAllWeightedBtn) startAllWeightedBtn.disabled = !fileLoaded;
+
+                if (categorySelector) categorySelector.disabled = !(fileLoaded && Object.keys(allCategories).length > 0);
+                const catSelected = categorySelector && categorySelector.value !== "";
+                const selectedCatData = catSelected ? allCategories[categorySelector.value] : null;
+                const hasQuestionsInSelectedCat = selectedCatData && selectedCatData.questionIds.length > 0;
+
+                if (numQuestionsCategoryInput) numQuestionsCategoryInput.disabled = !(fileLoaded && catSelected && hasQuestionsInSelectedCat);
+                if (startSelectedCategoryBtn) startSelectedCategoryBtn.disabled = !(fileLoaded && catSelected && hasQuestionsInSelectedCat);
+
+
+                if (viewProblemListBtn) viewProblemListBtn.disabled = !fileLoaded;
+            } else if (viewId === 'quiz') {
+                if (quizView) quizView.classList.remove('hidden');
+                updateCurrentQuizModeInfo();
+            } else if (viewId === 'problemList') {
+                if (problemListView) problemListView.classList.remove('hidden');
+                 if (document.getElementById('backToModeSelectionFromListBtn')) { 
+                     document.getElementById('backToModeSelectionFromListBtn').classList.remove('hidden');
+                }
+                setActiveProblemListTab(activeProblemListTab);
+            }
+        }
+
+        function updateCurrentQuizModeInfo() {
+            if (!currentQuizModeInfo || !questionCounter) return;
+            let modeText = '';
+            if (currentQuizMode === 'all_weighted') {
+                modeText = 'モード: 全カテゴリから出題';
+            } else if (currentQuizMode === 'category_specific' && currentSelectedCategory) {
+                modeText = `モード: 「${currentSelectedCategory}」 から出題`;
+            } else if (currentQuizMode === 'review') {
+                modeText = 'モード: 問題レビュー中';
+            } else if (currentQuizMode === 'retry_incorrect') {
+                modeText = 'モード: 不正解問題 再挑戦';
+            }
+            currentQuizModeInfo.textContent = modeText;
+
+            if (currentQuizMode === 'review') {
+                questionCounter.classList.add('hidden');
+            } else if (questionsToAskInSession > 0) {
+                const currentDisplayCount = questionsAnsweredInSession + 1; 
+                questionCounter.textContent = `${Math.min(currentDisplayCount, questionsToAskInSession)} / ${questionsToAskInSession} 問目`;
+                questionCounter.classList.remove('hidden');
+            } else {
+                questionCounter.classList.add('hidden');
+            }
+        }
+
+        // --- Quiz Core Logic ---
+        function getNextQuestionBasedOnMode() {
+            if (questionsAnsweredInSession >= questionsToAskInSession) {
+                return null; 
+            }
+
+            if (questions.length === 0) return null;
+            let availableQuestionPoolIds = [];
+            let chosenQuestionId = null;
+            let maxTries = questions.length * 3; 
+            let tries = 0;
+
+            if (currentQuizMode === 'all_weighted') {
+                while(tries < maxTries) {
+                    tries++;
+                    const categoriesWithUnanswered = {};
+                    let totalEffectiveWeight = 0;
+                    for (const catName in allCategories) {
+                        const unansweredInCatThisSession = allCategories[catName].questionIds.filter(id => !questionsAnsweredInCurrentQuizSession.has(id));
+                        if (unansweredInCatThisSession.length > 0) {
+                            categoriesWithUnanswered[catName] = { ids: unansweredInCatThisSession, weight: allCategories[catName].weight };
+                            totalEffectiveWeight += allCategories[catName].weight;
+                        }
+                    }
+                    
+                    if (Object.keys(categoriesWithUnanswered).length === 0) { 
+                        const allQuestionsInPool = questions.map(q => q.id);
+                        const potentialFallback = allQuestionsInPool.filter(id => !questionsAnsweredInCurrentQuizSession.has(id));
+                        if (potentialFallback.length > 0) { 
+                             chosenQuestionId = potentialFallback[Math.floor(Math.random() * potentialFallback.length)];
+                             break;
+                        }
+                        return null; 
+                    }
+
+
+                    let randomNum = Math.random() * totalEffectiveWeight;
+                    let chosenCategoryName = null;
+                    for (const catName in categoriesWithUnanswered) {
+                        if (randomNum < categoriesWithUnanswered[catName].weight) { chosenCategoryName = catName; break; }
+                        randomNum -= categoriesWithUnanswered[catName].weight;
+                    }
+                     if (!chosenCategoryName && Object.keys(categoriesWithUnanswered).length > 0) {
+                        const catKeys = Object.keys(categoriesWithUnanswered);
+                        chosenCategoryName = catKeys[Math.floor(Math.random() * catKeys.length)]; 
+                    }
+
+                    if (chosenCategoryName) {
+                         availableQuestionPoolIds = categoriesWithUnanswered[chosenCategoryName].ids;
+                         if(availableQuestionPoolIds.length > 0){
+                            const randomIdIndex = Math.floor(Math.random() * availableQuestionPoolIds.length);
+                            chosenQuestionId = availableQuestionPoolIds[randomIdIndex];
+                            break; 
+                         }
+                    }
+                    if(tries >= maxTries && !chosenQuestionId) return null; 
+                }
+
+
+            } else if (currentQuizMode === 'category_specific' && currentSelectedCategory) {
+                const categoryData = allCategories[currentSelectedCategory];
+                if (!categoryData) return null;
+                availableQuestionPoolIds = categoryData.questionIds.filter(id => !questionsAnsweredInCurrentQuizSession.has(id));
+                
+                if (availableQuestionPoolIds.length === 0) return null; 
+                const randomIdIndex = Math.floor(Math.random() * availableQuestionPoolIds.length);
+                chosenQuestionId = availableQuestionPoolIds[randomIdIndex];
+
+            } else if (currentQuizMode === 'review') { 
+                return currentQuestion; 
+            } else if (currentQuizMode === 'retry_incorrect') {
+                if (questionsAnsweredInSession < incorrectQuestionsForRetrySession.length) {
+                    chosenQuestionId = incorrectQuestionsForRetrySession[questionsAnsweredInSession];
+                } else {
+                    return null; 
+                }
+            }
+            else { console.warn("Unknown quiz mode."); return null; }
+
+            return chosenQuestionId ? questions.find(q => q.id === chosenQuestionId) : null;
+        }
+
+        function loadQuestion(questionToLoad = null, isRetry = false) {
+            isRetryingQuestion = isRetry; 
+
+            if(feedback) feedback.classList.add('hidden');
+            if(feedbackText) feedbackText.textContent = '';
+            if(explanationDiv) { explanationDiv.textContent = ''; explanationDiv.classList.add('hidden');}
+            if(submitAnswerBtn) submitAnswerBtn.classList.remove('hidden');
+            if(nextQuestionBtn) nextQuestionBtn.classList.add('hidden');
+            if(retryQuestionBtn) retryQuestionBtn.classList.add('hidden');
+            if(optionsContainer) { optionsContainer.innerHTML = ''; }
+
+            updateCurrentQuizModeInfo(); 
+
+            let nextQ = null;
+            if (currentQuizMode === 'review' && questionToLoad) {
+                nextQ = questionToLoad;
+            } else {
+                if (questionsAnsweredInSession >= questionsToAskInSession && currentQuizMode !== 'review') { 
+                    currentQuestion = null; 
+                } else {
+                    nextQ = getNextQuestionBasedOnMode();
+                }
+            }
+            
+            currentQuestion = nextQ;
+            
+            if (!currentQuestion) { 
+                if(retryQuestionBtn) retryQuestionBtn.classList.add('hidden');
+                let message = '問題ファイルをロードしてください。';
+                if (questions.length > 0) {
+                    if (questionsAnsweredInSession >= questionsToAskInSession && questionsToAskInSession > 0) {
+                         message = `指定された ${questionsToAskInSession} 問の出題が完了しました。お疲れ様でした！`;
+                    } else if (currentQuizMode === 'all_weighted' && questionsAnsweredInCurrentQuizSession.size >= questions.length) {
+                        message = 'すべてのユニークな問題が出題されました！お疲れ様でした。';
+                    } else if (currentQuizMode === 'category_specific' && currentSelectedCategory) {
+                        const categoryData = allCategories[currentSelectedCategory];
+                        const allInCategoryAnsweredThisSession = categoryData && categoryData.questionIds.every(id => questionsAnsweredInCurrentQuizSession.has(id));
+                        if (allInCategoryAnsweredThisSession && categoryData && categoryData.questionIds.length > 0) {
+                             message = `「${currentSelectedCategory}」カテゴリの、このセッションで出題可能な問題はすべて解答済みです。お疲れ様でした！`;
+                        } else if (categoryData && categoryData.questionIds.length === 0) {
+                            message = `「${currentSelectedCategory}」カテゴリには問題が登録されていません。`;
+                        } else { 
+                             message = 'この条件で表示できる問題がありません。';
+                        }
+                    } else {
+                         message = 'この条件で表示できる問題がありません。モード選択に戻るか、別のカテゴリをお試しください。';
+                    }
+                }
+                if(questionText) questionText.textContent = message;
+                if(submitAnswerBtn) submitAnswerBtn.classList.add('hidden');
+                if(nextQuestionBtn) {
+                    if (questionsToAskInSession > 0 && questionsAnsweredInSession >= questionsToAskInSession) {
+                        nextQuestionBtn.textContent = 'モード選択に戻る';
+                        nextQuestionBtn.onclick = () => showView('modeSelection'); 
+                        nextQuestionBtn.classList.remove('hidden');
+                    } else {
+                        nextQuestionBtn.classList.add('hidden');
+                    }
+                }
+                return;
+            }
+            
+            if (currentQuizMode !== 'retry_incorrect' && currentQuizMode !== 'review') {
+                 questionsAnsweredInCurrentQuizSession.add(currentQuestion.id);
+            }
+
+
+            if(questionText) questionText.textContent = currentQuestion.question;
+
+            const inputType = currentQuestion.type === 'single' ? 'radio' : 'checkbox';
+            currentQuestion.options.forEach((option, index) => {
+                const label = document.createElement('label');
+                label.className = 'option-label flex items-center p-3 border rounded-md hover:bg-gray-50 cursor-pointer transition-colors';
+                label.innerHTML = `
+                    <input type="${inputType}" name="answer" value="${index}" class="form-${inputType} h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 mr-3">
+                    <span></span>`;
+                const span = label.querySelector('span');
+                if(span) span.textContent = option;
+                if(optionsContainer) optionsContainer.appendChild(label);
+
+                label.addEventListener('click', (e) => {
+                    const inputElement = label.querySelector('input');
+                    if (!inputElement || inputElement.disabled) return;
+
+                    if (inputType === 'radio') {
+                        if (!inputElement.checked) { inputElement.checked = true; }
+                        optionsContainer.querySelectorAll('.option-label').forEach(lbl => lbl.classList.remove('selected'));
+                        label.classList.add('selected');
+                    } else {
+                        if (inputElement.checked) { label.classList.add('selected'); }
+                        else { label.classList.remove('selected'); }
+                    }
+                });
+            });
+
+            if (isRetry || (currentQuizMode === 'review' && !quizHistory.find(r => r.questionId === currentQuestion.id))) {
+                if(optionsContainer) optionsContainer.querySelectorAll('input').forEach(input => input.disabled = false);
+                if(submitAnswerBtn) submitAnswerBtn.classList.remove('hidden');
+                if(retryQuestionBtn) retryQuestionBtn.classList.add('hidden'); 
+            }
+        }
+
+
+        function checkAnswer() {
+            if (!currentQuestion || !optionsContainer || !feedback || !explanationDiv || !submitAnswerBtn || !retryQuestionBtn) return; 
+            const selectedOptions = Array.from(optionsContainer.querySelectorAll('input:checked')).map(input => parseInt(input.value));
+
+            if (selectedOptions.length === 0) {
+                showMessageBox('選択肢を選んでください。');
+                return;
+            }
+
+            const isCorrect = currentQuestion.correctAnswers.length === selectedOptions.length &&
+                              currentQuestion.correctAnswers.every(answer => selectedOptions.includes(answer)) &&
+                              selectedOptions.every(sel => currentQuestion.correctAnswers.includes(sel));
+
+            feedback.classList.remove('hidden');
+            explanationDiv.textContent = `解説: ${currentQuestion.explanation}`; explanationDiv.classList.remove('hidden');
+            if (isCorrect) { if(feedbackText) feedbackText.textContent = '正解です！'; feedback.classList.remove('bg-red-100','border-red-400','text-red-700'); feedback.classList.add('bg-green-100','border-green-400','text-green-700'); }
+            else { if(feedbackText) feedbackText.textContent = '不正解です。'; feedback.classList.remove('bg-green-100','border-green-400','text-green-700'); feedback.classList.add('bg-red-100','border-red-400','text-red-700');}
+
+            optionsContainer.querySelectorAll('.option-label').forEach((label, index) => {
+                label.classList.remove('selected'); const input = label.querySelector('input'); if(input) input.disabled = true;
+                if (currentQuestion.correctAnswers.includes(index)) { label.classList.add('correct', 'bg-green-50', 'border-green-300'); }
+                else if (selectedOptions.includes(index) && !currentQuestion.correctAnswers.includes(index)) { label.classList.add('incorrect', 'bg-red-50', 'border-red-300');}
+            });
+
+            submitAnswerBtn.classList.add('hidden');
+
+            const existingRecordIndex = quizHistory.findIndex(r => r.questionId === currentQuestion.id);
+            if (existingRecordIndex !== -1) {
+                if (isRetryingQuestion || currentQuizMode !== 'review') { // Update if retrying or not in pure review mode
+                    quizHistory[existingRecordIndex] = { ...quizHistory[existingRecordIndex], answeredCorrectly: isCorrect, userAnswers: selectedOptions };
+                }
+            } else {
+                 quizHistory.push({ questionId: currentQuestion.id, questionText: currentQuestion.question, options: currentQuestion.options, correctAnswers: currentQuestion.correctAnswers, explanation: currentQuestion.explanation, type: currentQuestion.type, numCorrect: currentQuestion.numCorrect, category: currentQuestion.category, answeredCorrectly: isCorrect, userAnswers: selectedOptions });
+            }
+            answeredQuestionIds.add(currentQuestion.id); 
+            isRetryingQuestion = false; 
+
+            saveProgress(); // Save progress after each answer
+
+            if (currentQuizMode !== 'review') {
+                 questionsAnsweredInSession++; 
+            }
+
+            if (currentQuizMode === 'review') {
+                retryQuestionBtn.classList.remove('hidden');
+                nextQuestionBtn.classList.add('hidden');
+            } else if (questionsAnsweredInSession >= questionsToAskInSession) { 
+                nextQuestionBtn.textContent = 'モード選択に戻る';
+                nextQuestionBtn.classList.remove('hidden');
+                retryQuestionBtn.classList.add('hidden'); 
+                nextQuestionBtn.onclick = () => {
+                    showView('modeSelection');
+                    if(nextQuestionBtn) {
+                         nextQuestionBtn.textContent = '次の問題へ';
+                         nextQuestionBtn.onclick = nextQuestion; 
+                    }
+                };
+            } else { 
+                retryQuestionBtn.classList.add('hidden');
+                nextQuestionBtn.textContent = '次の問題へ';
+                nextQuestionBtn.onclick = nextQuestion; 
+                nextQuestionBtn.classList.remove('hidden');
+            }
+        }
+
+        function nextQuestion() {
+            if(nextQuestionBtn) {
+                nextQuestionBtn.textContent = '次の問題へ'; 
+                nextQuestionBtn.onclick = nextQuestion;   
+            }
+            loadQuestion();
+        }
+
+        if (retryQuestionBtn) {
+            retryQuestionBtn.addEventListener('click', () => {
+                if (currentQuestion) {
+                    reviewProblem(currentQuestion.id, true); 
+                }
+            });
+        }
+        if (backToProblemListBtn) { 
+            backToProblemListBtn.addEventListener('click', () => {
+                activeProblemListTab = 'answered'; 
+                showView('problemList');
+            });
+        }
+
+
+        // --- Problem List Tab Logic ---
+        function setActiveProblemListTab(tabName) {
+            activeProblemListTab = tabName;
+            if (tabName === 'answered') {
+                tabAnsweredProblemsBtn.classList.add('active');
+                tabAllProblemsBtn.classList.remove('active');
+                tabContentAnswered.classList.remove('hidden');
+                tabContentAll.classList.add('hidden');
+                renderAnsweredProblemListCategorized();
+            } else if (tabName === 'all') {
+                tabAllProblemsBtn.classList.add('active');
+                tabAnsweredProblemsBtn.classList.remove('active');
+                tabContentAll.classList.remove('hidden');
+                tabContentAnswered.classList.add('hidden');
+                renderAllProblemsListCategorized();
+            }
+        }
+
+        if (tabAnsweredProblemsBtn) tabAnsweredProblemsBtn.addEventListener('click', () => setActiveProblemListTab('answered'));
+        if (tabAllProblemsBtn) tabAllProblemsBtn.addEventListener('click', () => setActiveProblemListTab('all'));
+
+
+        // --- Problem List Rendering ---
+        function renderAnsweredProblemListCategorized() {
+            if (!problemListCategorized || !retryIncorrectBtn) return;
+            problemListCategorized.innerHTML = '';
+            const answeredHistory = quizHistory.filter(r => answeredQuestionIds.has(r.questionId));
+
+            const incorrectQuestions = answeredHistory.filter(r => !r.answeredCorrectly);
+            if (incorrectQuestions.length > 0) {
+                retryIncorrectBtn.classList.remove('hidden');
+                retryIncorrectBtn.disabled = false;
+                retryIncorrectBtn.textContent = `不正解問題に再挑戦 (${incorrectQuestions.length}問)`;
+            } else {
+                retryIncorrectBtn.classList.add('hidden');
+                retryIncorrectBtn.disabled = true;
+                 retryIncorrectBtn.textContent = `不正解問題に再挑戦`;
+            }
+
+            if (answeredHistory.length === 0) {
+                if (noProblemsAnsweredMessageEl) {
+                    noProblemsAnsweredMessageEl.textContent = questions.length > 0 ? '解答済みの問題はありません。クイズに挑戦しましょう！' : '「問題集.json」のロードに失敗したか、問題が含まれていません。';
+                    noProblemsAnsweredMessageEl.classList.remove('hidden');
+                }
+                return;
+            }
+            if (noProblemsAnsweredMessageEl) noProblemsAnsweredMessageEl.classList.add('hidden');
+
+            const problemsByCat = {};
+            answeredHistory.forEach(histEntry => {
+                const qData = questions.find(q => q.id === histEntry.questionId);
+                if (!qData) return;
+                const category = qData.category || "カテゴリなし";
+                if (!problemsByCat[category]) { problemsByCat[category] = []; }
+                problemsByCat[category].push({ ...histEntry, originalIndex: originalQuestionOrder.indexOf(qData.id) });
+            });
+
+            Object.keys(problemsByCat).sort().forEach(categoryName => {
+                const categoryTotalQuestions = allCategories[categoryName] ? allCategories[categoryName].questionIds.length : 0;
+                const answeredInCategory = problemsByCat[categoryName] || [];
+                const numAnsweredInCategory = answeredInCategory.length;
+                const numCorrectInCategory = answeredInCategory.filter(r => r.answeredCorrectly).length;
+                const accuracyInCategory = numAnsweredInCategory > 0 ? Math.round((numCorrectInCategory / numAnsweredInCategory) * 100) : 0;
+
+                const categoryTitleContainer = document.createElement('div');
+                categoryTitleContainer.className = 'category-title-container';
+
+                const categoryTitle = document.createElement('h3');
+                categoryTitle.className = 'category-title-list';
+                categoryTitle.textContent = categoryName;
+
+                const categoryStats = document.createElement('span');
+                categoryStats.className = 'category-stats';
+                categoryStats.textContent = `(${numAnsweredInCategory}/${categoryTotalQuestions} 解答済, 正答率 ${accuracyInCategory}%)`;
+
+                categoryTitleContainer.appendChild(categoryTitle);
+                categoryTitleContainer.appendChild(categoryStats);
+                problemListCategorized.appendChild(categoryTitleContainer);
+
+                const categoryUl = document.createElement('ul');
+                categoryUl.className = 'space-y-2 mb-4';
+                answeredInCategory
+                    .sort((a, b) => a.originalIndex - b.originalIndex)
+                    .forEach(historyRecord => {
+                        const questionData = questions.find(q => q.id === historyRecord.questionId);
+                        if (!questionData) return;
+                        const listItem = document.createElement('li');
+                        listItem.className = 'flex justify-between items-center bg-gray-50 p-3 rounded-lg shadow-sm transition-colors duration-200 hover:bg-gray-100 cursor-pointer';
+                        let questionDisplay = questionData.question;
+                        if (questionDisplay.length > 60) questionDisplay = questionDisplay.substring(0, 60) + "...";
+                        listItem.innerHTML = `
+                            <div><span class="text-gray-800 font-medium">${questionDisplay}</span></div>
+                            <span class="px-3 py-1 rounded-full text-sm font-semibold ${historyRecord.answeredCorrectly ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800'}">
+                                ${historyRecord.answeredCorrectly ? '正解' : '不正解'}</span>`;
+                        listItem.addEventListener('click', () => reviewProblem(historyRecord.questionId, false));
+                        categoryUl.appendChild(listItem);
+                    });
+                problemListCategorized.appendChild(categoryUl);
+            });
+        }
+
+        function renderAllProblemsListCategorized() {
+            if (!problemListAllContainer) return;
+            problemListAllContainer.innerHTML = '';
+
+            if (questions.length === 0) {
+                if (noProblemsAllMessageEl) {
+                    noProblemsAllMessageEl.textContent = '「問題集.json」のロードに失敗したか、問題が含まれていません。';
+                    noProblemsAllMessageEl.classList.remove('hidden');
+                }
+                return;
+            }
+            if (noProblemsAllMessageEl) noProblemsAllMessageEl.classList.add('hidden');
+
+            const allProblemsByCat = {};
+            questions.forEach(q => {
+                const category = q.category || "カテゴリなし";
+                if (!allProblemsByCat[category]) { allProblemsByCat[category] = []; }
+                allProblemsByCat[category].push(q);
+            });
+
+
+            Object.keys(allProblemsByCat).sort().forEach(categoryName => {
+                const categoryTotalQuestions = allCategories[categoryName] ? allCategories[categoryName].questionIds.length : 0;
+                let numAnsweredInCategory = 0;
+                let numCorrectInCategory = 0;
+                allProblemsByCat[categoryName].forEach(qInCat => {
+                    const historyRecord = quizHistory.find(h => h.questionId === qInCat.id);
+                    if (historyRecord) {
+                        numAnsweredInCategory++;
+                        if (historyRecord.answeredCorrectly) {
+                            numCorrectInCategory++;
+                        }
+                    }
+                });
+                const accuracyInCategory = numAnsweredInCategory > 0 ? Math.round((numCorrectInCategory / numAnsweredInCategory) * 100) : 0;
+
+
+                const categoryTitleContainer = document.createElement('div');
+                categoryTitleContainer.className = 'category-title-container';
+
+                const categoryTitle = document.createElement('h3');
+                categoryTitle.className = 'category-title-list';
+                categoryTitle.textContent = categoryName;
+
+                const categoryStats = document.createElement('span');
+                categoryStats.className = 'category-stats';
+                categoryStats.textContent = `(${numAnsweredInCategory}/${categoryTotalQuestions} 解答済, 正答率 ${accuracyInCategory}%)`;
+
+
+                categoryTitleContainer.appendChild(categoryTitle);
+                categoryTitleContainer.appendChild(categoryStats);
+                problemListAllContainer.appendChild(categoryTitleContainer);
+
+                const categoryUl = document.createElement('ul');
+                categoryUl.className = 'space-y-2 mb-4';
+
+                allProblemsByCat[categoryName]
+                    .sort((a,b) => originalQuestionOrder.indexOf(a.id) - originalQuestionOrder.indexOf(b.id))
+                    .forEach(questionData => {
+                        const listItem = document.createElement('li');
+                        listItem.className = 'flex justify-between items-center bg-gray-50 p-3 rounded-lg shadow-sm transition-colors duration-200 hover:bg-gray-100 cursor-pointer';
+                        let questionDisplay = questionData.question;
+                        if (questionDisplay.length > 60) questionDisplay = questionDisplay.substring(0, 60) + "...";
+
+                        let statusHtml = '<span class="px-3 py-1 rounded-full text-sm font-semibold bg-gray-200 text-gray-700">未解答</span>';
+                        const historyRecord = quizHistory.find(r => r.questionId === questionData.id);
+                        if (historyRecord) {
+                            statusHtml = `<span class="px-3 py-1 rounded-full text-sm font-semibold ${historyRecord.answeredCorrectly ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800'}">
+                                ${historyRecord.answeredCorrectly ? '正解' : '不正解'}</span>`;
+                        }
+                        listItem.innerHTML = `
+                            <div><span class="text-gray-800 font-medium">${questionDisplay}</span></div>
+                            ${statusHtml}`;
+                        listItem.addEventListener('click', () => reviewProblem(questionData.id, false)); 
+                        categoryUl.appendChild(listItem);
+                    });
+                problemListAllContainer.appendChild(categoryUl);
+            });
+        }
+
+
+        function reviewProblem(questionId, isRetryAttempt = false) {
+            const questionToReview = questions.find(q => q.id === questionId);
+            if (questionToReview) {
+                currentQuizMode = 'review';
+                currentQuestion = null; 
+                questionsToAskInSession = 0; 
+                questionsAnsweredInSession = 0;
+                questionsAnsweredInCurrentQuizSession.clear();
+
+                showView('quiz'); 
+                loadQuestion(questionToReview, isRetryAttempt);
+
+                const record = quizHistory.find(r => r.questionId === questionId);
+
+                if (record && !isRetryAttempt) {
+                    optionsContainer.querySelectorAll('input').forEach(inputEl => {
+                        if (record.userAnswers.includes(parseInt(inputEl.value))) {
+                            inputEl.checked = true;
+                            const closestLabel = inputEl.closest('.option-label');
+                            if (closestLabel) closestLabel.classList.add('selected');
+                        }
+                    });
+                    checkAnswer(); 
+                } else { 
+                    if(submitAnswerBtn) submitAnswerBtn.classList.remove('hidden');
+                    if(nextQuestionBtn) nextQuestionBtn.classList.add('hidden');
+                    if(retryQuestionBtn) retryQuestionBtn.classList.add('hidden');
+                    if(optionsContainer) optionsContainer.querySelectorAll('input').forEach(input => input.disabled = false);
+                    if(feedback) feedback.classList.add('hidden');
+                    if(explanationDiv) explanationDiv.classList.add('hidden');
+                }
+            } else {
+                showMessageBox('問題が見つかりません。');
+            }
+        }
+
+
+        // --- Event Listeners for Mode Selection & Navigation ---
+        function startQuizSession() {
+            questionsAnsweredInSession = 0;      
+            questionsAnsweredInCurrentQuizSession.clear(); 
+            currentQuestion = null; 
+            loadQuestion(); 
+            showView('quiz');
+        }
+
+        if(startAllWeightedBtn) {
+            startAllWeightedBtn.addEventListener('click', () => {
+                if (questions.length === 0) { showMessageBox('「問題集.json」のロードに失敗したか、問題が含まれていません。'); return; }
+                if (!numQuestionsAllInput) { showMessageBox('出題数入力フィールドが見つかりません。'); return; }
+                const numQs = parseInt(numQuestionsAllInput.value);
+                const maxAvailable = questions.length; 
+                if (isNaN(numQs) || numQs < 1 || numQs > maxAvailable) {
+                    showMessageBox(`1から${maxAvailable}の間で有効な出題数を入力してください。`); return;
+                }
+                questionsToAskInSession = numQs;
+                if (questionsToAskInSession === 0) {
+                    showMessageBox('出題できる問題がありません。'); return;
+                }
+                currentQuizMode = 'all_weighted';
+                currentSelectedCategory = null;
+                startQuizSession();
+            });
+        }
+
+
+        if(startSelectedCategoryBtn && categorySelector && numQuestionsCategoryInput) {
+            startSelectedCategoryBtn.addEventListener('click', () => {
+                const selectedCatName = categorySelector.value;
+                if (!selectedCatName || !allCategories[selectedCatName]) { showMessageBox('有効なカテゴリを選択してください。'); return; }
+
+                const numQsCategory = parseInt(numQuestionsCategoryInput.value);
+                const questionsInSelectedCat = allCategories[selectedCatName].questionIds;
+                const maxInCat = questionsInSelectedCat.length;
+                if (maxInCat === 0) {
+                    showMessageBox(`「${selectedCatName}」カテゴリには問題がありません。`); return;
+                }
+                if (isNaN(numQsCategory) || numQsCategory < 1 || numQsCategory > maxInCat) {
+                     showMessageBox(`カテゴリ「${selectedCatName}」には ${maxInCat}問あります。1から${maxInCat}の間で有効な出題数を入力してください。`);
+                     return;
+                }
+                questionsToAskInSession = numQsCategory;
+                if (questionsToAskInSession === 0) { 
+                    showMessageBox(`「${selectedCatName}」カテゴリで出題できる問題がありません。`); return;
+                }
+                currentQuizMode = 'category_specific';
+                currentSelectedCategory = selectedCatName;
+                startQuizSession();
+            });
+        }
+
+        if (retryIncorrectBtn) {
+            retryIncorrectBtn.addEventListener('click', () => {
+                const incorrectHistEntries = quizHistory.filter(r => answeredQuestionIds.has(r.questionId) && !r.answeredCorrectly);
+                if (incorrectHistEntries.length === 0) {
+                    showMessageBox('再挑戦できる不正解の問題はありません。');
+                    return;
+                }
+                incorrectQuestionsForRetrySession = incorrectHistEntries.map(q => q.questionId);
+                for (let i = incorrectQuestionsForRetrySession.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [incorrectQuestionsForRetrySession[i], incorrectQuestionsForRetrySession[j]] = [incorrectQuestionsForRetrySession[j], incorrectQuestionsForRetrySession[i]];
+                }
+                currentQuizMode = 'retry_incorrect';
+                currentSelectedCategory = null; 
+                questionsToAskInSession = incorrectQuestionsForRetrySession.length; 
+                startQuizSession(); 
+            });
+        }
+
+
+        if(viewProblemListBtn) {
+            viewProblemListBtn.addEventListener('click', () => {
+                if (questions.length === 0) { showMessageBox('「問題集.json」のロードに失敗したか、問題が含まれていません。'); return; }
+                activeProblemListTab = 'answered';
+                showView('problemList');
+            });
+        }
+
+        if(backToModeSelectionBtn) { 
+            backToModeSelectionBtn.addEventListener('click', () => {
+                currentQuestion = null;
+                currentQuizMode = null;
+                currentSelectedCategory = null;
+                questionsAnsweredInSession = 0;
+                questionsToAskInSession = 0;
+                questionsAnsweredInCurrentQuizSession.clear();
+                incorrectQuestionsForRetrySession = [];
+                showView('modeSelection');
+            });
+        }
+        if(backToModeSelectionFromListBtn) { 
+             backToModeSelectionFromListBtn.addEventListener('click', () => {
+                showView('modeSelection');
+            });
+        }
+        if(resetProgressBtn){ // Event listener for reset button
+            resetProgressBtn.addEventListener('click', () => {
+                if(confirm("すべての解答履歴と進捗をリセットします。よろしいですか？")){
+                    clearProgress();
+                    // Optionally, refresh the view or guide the user
+                    showView('modeSelection'); // Go back to mode selection after reset
+                }
+            });
+        }
+
+
+        if(submitAnswerBtn) submitAnswerBtn.addEventListener('click', checkAnswer);
+        if(nextQuestionBtn) nextQuestionBtn.addEventListener('click', nextQuestion);
+
+        // --- Initial Load ---
+        async function autoLoadDefaultQuestions() {
+            try {
+                const response = await fetch('./問題集.json');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status} - 「問題集.json」が見つからないか、アクセスできませんでした。`);
+                }
+                const jsonContent = await response.text();
+                processQuestionsJson(jsonContent); // This will now call loadProgress() internally
+            } catch (error) {
+                console.error("自動ファイルロードエラー:", error);
+                if (fileLoadStatus) {
+                    fileLoadStatus.textContent = `自動ロード失敗: ${error.message} (ファイルが正しい場所にあるか確認してください)`;
+                    fileLoadStatus.classList.add('text-red-500');
+                    fileLoadStatus.classList.remove('text-green-600');
+                }
+                resetQuizStateAfterFileError();
+            }
+        }
+        
+        // Save progress on window unload as a fallback (less reliable than per-action save)
+        window.addEventListener('beforeunload', saveProgress);
+
+        window.onload = async function() {
+            if(numQuestionsAllInput) numQuestionsAllInput.disabled = true;
+            if(startAllWeightedBtn) startAllWeightedBtn.disabled = true;
+            if(categorySelector) categorySelector.disabled = true;
+            if(numQuestionsCategoryInput) numQuestionsCategoryInput.disabled = true;
+            if(startSelectedCategoryBtn) startSelectedCategoryBtn.disabled = true;
+            if(viewProblemListBtn) viewProblemListBtn.disabled = true;
+            if(retryIncorrectBtn) { retryIncorrectBtn.classList.add('hidden'); retryIncorrectBtn.disabled = true; }
+
+
+            if(noCategoriesMessage) { noCategoriesMessage.textContent = '問題ファイルをロードしてカテゴリ情報を取得してください。'; noCategoriesMessage.classList.remove('hidden'); }
+            if(noProblemsAnsweredMessageEl) { noProblemsAnsweredMessageEl.textContent = '問題ファイルをロードし、クイズに解答してください。';}
+            if(noProblemsAllMessageEl) { noProblemsAllMessageEl.textContent = '問題ファイルをロードしてください。';}
+
+
+            if(modeSelectionView) modeSelectionView.classList.add('hidden');
+
+            await autoLoadDefaultQuestions(); // This will load questions and then progress
+
+             if (questions.length === 0) { // If questions failed to load, ensure modeSelection is shown
+                showView('modeSelection'); 
+            }
+        };
+    </script>
+</body>
+</html>
