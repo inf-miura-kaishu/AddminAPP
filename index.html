@@ -99,7 +99,7 @@
                     <button id="viewProblemListBtn" class="btn btn-info w-full disabled:opacity-50" disabled>問題一覧</button>
                 </div>
             </div>
-             <button id="resetProgressBtn" class="btn btn-neutral mt-4">進捗をリセット</button> <!-- Added reset button -->
+             <button id="resetProgressBtn" class="btn btn-neutral mt-4">進捗をリセット</button>
         </div>
 
 
@@ -147,6 +147,26 @@
                     <!-- All problems categorized list items will be dynamically inserted here -->
                 </div>
             </div>
+        </div>
+
+        <div id="quizResultView" class="p-6 bg-white shadow-xl rounded-lg hidden">
+            <h2 class="text-2xl font-semibold mb-6 text-gray-800">クイズ結果</h2>
+            
+            <div id="overallStatsContainer" class="mb-6 p-4 border rounded-md bg-gray-50">
+                <h3 class="text-lg font-semibold mb-2 text-gray-700">全体の成績</h3>
+                <p id="overallQuestionsAnswered" class="text-gray-600"></p>
+                <p id="overallCorrectAnswers" class="text-gray-600"></p>
+                <p id="overallAccuracyRate" class="text-gray-600 font-bold"></p>
+            </div>
+        
+            <div id="categoryStatsContainer" class="mb-6">
+                <h3 class="text-lg font-semibold mb-2 text-gray-700">カテゴリ別成績</h3>
+                <div id="categoryBreakdownList" class="space-y-3">
+                    <!-- カテゴリ別結果がここに挿入される -->
+                </div>
+            </div>
+        
+            <button id="backToModeSelectionFromResultBtn" class="btn btn-neutral">モード選択に戻る</button>
         </div>
 
 
@@ -227,6 +247,7 @@
             "生産性向上とコラボレーション": 0.07,
             "データ管理＆分析": 0.14,
             "ワークフロー/プロセスの自動化": 0.16
+            // "試験に出る数字" はここになくても動的に処理される
         };
 
         // --- Global State Variables ---
@@ -256,11 +277,12 @@
         const maxTotalQuestionsSpan = document.getElementById('maxTotalQuestionsSpan');
         const numQuestionsCategoryInput = document.getElementById('numQuestionsCategory');
         const maxCategoryQuestionsSpan = document.getElementById('maxCategoryQuestionsSpan');
-        const resetProgressBtn = document.getElementById('resetProgressBtn'); // Added reset button
+        const resetProgressBtn = document.getElementById('resetProgressBtn');
 
 
         const quizView = document.getElementById('quizView');
         const problemListView = document.getElementById('problemListView');
+        const quizResultView = document.getElementById('quizResultView'); // New view
         const currentQuizModeInfo = document.getElementById('currentQuizModeInfo');
         const questionCounter = document.getElementById('questionCounter');
         const questionText = document.getElementById('questionText');
@@ -274,6 +296,7 @@
         const backToProblemListBtn = document.getElementById('backToProblemListBtn'); 
         const backToModeSelectionBtn = document.getElementById('backToModeSelectionBtn');
         const backToModeSelectionFromListBtn = document.getElementById('backToModeSelectionFromListBtn');
+        const backToModeSelectionFromResultBtn = document.getElementById('backToModeSelectionFromResultBtn'); // New button
 
         const tabAnsweredProblemsBtn = document.getElementById('tabAnsweredProblems');
         const tabAllProblemsBtn = document.getElementById('tabAllProblems');
@@ -286,6 +309,14 @@
         const retryIncorrectBtn = document.getElementById('retryIncorrectBtn');
 
         const fileLoadStatus = document.getElementById('fileLoadStatus');
+
+        // Result View Elements
+        const overallStatsContainer = document.getElementById('overallStatsContainer');
+        const overallQuestionsAnsweredEl = document.getElementById('overallQuestionsAnswered');
+        const overallCorrectAnswersEl = document.getElementById('overallCorrectAnswers');
+        const overallAccuracyRateEl = document.getElementById('overallAccuracyRate');
+        const categoryBreakdownList = document.getElementById('categoryBreakdownList');
+
 
         // --- LocalStorage Functions ---
         function saveProgress() {
@@ -306,7 +337,6 @@
 
                 if (savedHistory) {
                     const parsedHistory = JSON.parse(savedHistory);
-                    // Basic validation: check if it's an array
                     if (Array.isArray(parsedHistory)) {
                         quizHistory = parsedHistory;
                     } else {
@@ -316,7 +346,6 @@
                 }
                 if (savedAnsweredIds) {
                      const parsedIds = JSON.parse(savedAnsweredIds);
-                    // Basic validation: check if it's an array
                     if (Array.isArray(parsedIds)) {
                         answeredQuestionIds = new Set(parsedIds);
                     } else {
@@ -327,7 +356,6 @@
                 console.log("Progress loaded from LocalStorage.");
             } catch (e) {
                 console.error("Error loading progress from LocalStorage:", e);
-                // If loading fails, start fresh to avoid app crashing
                 quizHistory = [];
                 answeredQuestionIds = new Set();
                 showMessageBox("進捗の読み込みに失敗しました。新規の状態で開始します。", 5000);
@@ -340,19 +368,15 @@
                 localStorage.removeItem(ANSWERED_IDS_KEY);
                 quizHistory = [];
                 answeredQuestionIds.clear();
-                questionsAnsweredInCurrentQuizSession.clear(); // Also clear current session progress
-                // Potentially reset other quiz state variables if needed
+                questionsAnsweredInCurrentQuizSession.clear(); 
                 currentQuestion = null;
                 questionsToAskInSession = 0;
                 questionsAnsweredInSession = 0;
 
-                // Re-render lists if currently viewing them
                 if (problemListView && !problemListView.classList.contains('hidden')) {
                     renderAnsweredProblemListCategorized();
                     renderAllProblemsListCategorized();
                 }
-                // Update mode selection view if necessary (e.g., disable buttons if progress was essential)
-                // For now, just a message
                 showMessageBox("進捗がリセットされました。", 3000);
                 console.log("Progress cleared from LocalStorage and memory.");
             } catch (e) {
@@ -408,11 +432,9 @@
                         presentCategoryNames.forEach(catName => allCategories[catName].weight /= currentTotalWeight);
                     }
 
-                    // Load progress *after* questions are processed, so we can validate history against current questions if needed
                     loadProgress(); 
 
                     populateCategorySelector();
-                    // quizHistory and answeredQuestionIds are now loaded by loadProgress()
                     currentQuestion = null;
                     if (fileLoadStatus) {
                         fileLoadStatus.textContent = `ロード完了: ${questions.length}問の問題が読み込まれました。カテゴリ数: ${Object.keys(allCategories).length}。`;
@@ -443,26 +465,23 @@
                     fileLoadStatus.textContent = `エラー: ${error.message} JSON形式を確認してください。`;
                     fileLoadStatus.classList.add('text-red-500'); fileLoadStatus.classList.remove('text-green-600');
                 }
-                resetQuizStateAfterFileError(); // This will also clear in-memory progress
+                resetQuizStateAfterFileError();
             }
         }
 
         function resetQuizStateAfterFileError() {
             questions = []; originalQuestionOrder = []; allCategories = {}; 
-            // Clear in-memory progress as well, as it might be tied to a failed file load
             quizHistory = [];
             answeredQuestionIds.clear();
             questionsAnsweredInCurrentQuizSession.clear();
             currentQuestion = null; currentQuizMode = null; currentSelectedCategory = null;
             questionsToAskInSession = 0; questionsAnsweredInSession = 0;
             
-
             if (startAllWeightedBtn) startAllWeightedBtn.disabled = true;
             if (categorySelector) { categorySelector.innerHTML = '<option value="">カテゴリを選択...</option>'; categorySelector.disabled = true; }
             if (startSelectedCategoryBtn) startSelectedCategoryBtn.disabled = true;
             if (viewProblemListBtn) viewProblemListBtn.disabled = true;
             if (retryIncorrectBtn) { retryIncorrectBtn.classList.add('hidden'); retryIncorrectBtn.disabled = true; }
-
 
             if (noCategoriesMessage) { noCategoriesMessage.classList.remove('hidden'); noCategoriesMessage.textContent = '問題ファイルからカテゴリ情報を読み込めませんでした。';}
 
@@ -474,7 +493,6 @@
                 numQuestionsCategoryInput.value = "5"; numQuestionsCategoryInput.max = "5"; numQuestionsCategoryInput.disabled = true;
             }
             if (maxCategoryQuestionsSpan) maxCategoryQuestionsSpan.textContent = "0";
-
 
             showView('modeSelection');
         }
@@ -536,9 +554,10 @@
             if (modeSelectionView) modeSelectionView.classList.add('hidden');
             if (quizView) quizView.classList.add('hidden');
             if (problemListView) problemListView.classList.add('hidden');
+            if (quizResultView) quizResultView.classList.add('hidden'); // Hide result view by default
 
             if (fileLoadSection) {
-                if (viewId === 'quiz' || viewId === 'problemList') {
+                if (viewId === 'quiz' || viewId === 'problemList' || viewId === 'quizResult') {
                     fileLoadSection.classList.add('hidden');
                 } else {
                     fileLoadSection.classList.remove('hidden');
@@ -569,7 +588,6 @@
                 if (modeSelectionView) modeSelectionView.classList.remove('hidden');
                 if (backToModeSelectionBtn) backToModeSelectionBtn.classList.remove('hidden');
 
-
                 const fileLoaded = questions.length > 0;
                 if (numQuestionsAllInput) numQuestionsAllInput.disabled = !fileLoaded;
                 if (startAllWeightedBtn) startAllWeightedBtn.disabled = !fileLoaded;
@@ -582,8 +600,14 @@
                 if (numQuestionsCategoryInput) numQuestionsCategoryInput.disabled = !(fileLoaded && catSelected && hasQuestionsInSelectedCat);
                 if (startSelectedCategoryBtn) startSelectedCategoryBtn.disabled = !(fileLoaded && catSelected && hasQuestionsInSelectedCat);
 
-
                 if (viewProblemListBtn) viewProblemListBtn.disabled = !fileLoaded;
+                
+                // Reset nextQuestionBtn state when returning to mode selection
+                if(nextQuestionBtn) {
+                     nextQuestionBtn.textContent = '次の問題へ';
+                     nextQuestionBtn.onclick = nextQuestion; 
+                }
+
             } else if (viewId === 'quiz') {
                 if (quizView) quizView.classList.remove('hidden');
                 updateCurrentQuizModeInfo();
@@ -593,6 +617,8 @@
                      document.getElementById('backToModeSelectionFromListBtn').classList.remove('hidden');
                 }
                 setActiveProblemListTab(activeProblemListTab);
+            } else if (viewId === 'quizResult') { // New view
+                if (quizResultView) quizResultView.classList.remove('hidden');
             }
         }
 
@@ -656,7 +682,6 @@
                         return null; 
                     }
 
-
                     let randomNum = Math.random() * totalEffectiveWeight;
                     let chosenCategoryName = null;
                     for (const catName in categoriesWithUnanswered) {
@@ -678,7 +703,6 @@
                     }
                     if(tries >= maxTries && !chosenQuestionId) return null; 
                 }
-
 
             } else if (currentQuizMode === 'category_specific' && currentSelectedCategory) {
                 const categoryData = allCategories[currentSelectedCategory];
@@ -733,9 +757,22 @@
                 if(retryQuestionBtn) retryQuestionBtn.classList.add('hidden');
                 let message = '問題ファイルをロードしてください。';
                 if (questions.length > 0) {
-                    if (questionsAnsweredInSession >= questionsToAskInSession && questionsToAskInSession > 0) {
-                         message = `指定された ${questionsToAskInSession} 問の出題が完了しました。お疲れ様でした！`;
-                    } else if (currentQuizMode === 'all_weighted' && questionsAnsweredInCurrentQuizSession.size >= questions.length) {
+                     if (currentQuizMode === 'all_weighted' || currentQuizMode === 'category_specific' || currentQuizMode === 'retry_incorrect') {
+                        if (questionsAnsweredInSession >= questionsToAskInSession && questionsToAskInSession > 0) {
+                             message = `指定された ${questionsToAskInSession} 問の出題が完了しました。結果を確認してください。`;
+                             // Instead of showing mode selection directly, prepare for results display
+                             if (nextQuestionBtn) {
+                                 nextQuestionBtn.textContent = '結果を表示';
+                                 nextQuestionBtn.onclick = displayQuizResults;
+                                 nextQuestionBtn.classList.remove('hidden');
+                             }
+                             if (submitAnswerBtn) submitAnswerBtn.classList.add('hidden');
+                             if (questionText) questionText.textContent = message;
+                             return; // Stop further processing in loadQuestion as results will be shown
+                        }
+                    }
+                    // Fallback messages for other scenarios if a question isn't found
+                    if (currentQuizMode === 'all_weighted' && questionsAnsweredInCurrentQuizSession.size >= questions.length) {
                         message = 'すべてのユニークな問題が出題されました！お疲れ様でした。';
                     } else if (currentQuizMode === 'category_specific' && currentSelectedCategory) {
                         const categoryData = allCategories[currentSelectedCategory];
@@ -751,16 +788,12 @@
                          message = 'この条件で表示できる問題がありません。モード選択に戻るか、別のカテゴリをお試しください。';
                     }
                 }
+
                 if(questionText) questionText.textContent = message;
                 if(submitAnswerBtn) submitAnswerBtn.classList.add('hidden');
-                if(nextQuestionBtn) {
-                    if (questionsToAskInSession > 0 && questionsAnsweredInSession >= questionsToAskInSession) {
-                        nextQuestionBtn.textContent = 'モード選択に戻る';
-                        nextQuestionBtn.onclick = () => showView('modeSelection'); 
-                        nextQuestionBtn.classList.remove('hidden');
-                    } else {
-                        nextQuestionBtn.classList.add('hidden');
-                    }
+                 // Ensure nextQuestionBtn is hidden if not explicitly set for results
+                if (nextQuestionBtn && nextQuestionBtn.textContent !== '結果を表示') {
+                    nextQuestionBtn.classList.add('hidden');
                 }
                 return;
             }
@@ -768,7 +801,6 @@
             if (currentQuizMode !== 'retry_incorrect' && currentQuizMode !== 'review') {
                  questionsAnsweredInCurrentQuizSession.add(currentQuestion.id);
             }
-
 
             if(questionText) questionText.textContent = currentQuestion.question;
 
@@ -834,7 +866,7 @@
 
             const existingRecordIndex = quizHistory.findIndex(r => r.questionId === currentQuestion.id);
             if (existingRecordIndex !== -1) {
-                if (isRetryingQuestion || currentQuizMode !== 'review') { // Update if retrying or not in pure review mode
+                if (isRetryingQuestion || currentQuizMode !== 'review') { 
                     quizHistory[existingRecordIndex] = { ...quizHistory[existingRecordIndex], answeredCorrectly: isCorrect, userAnswers: selectedOptions };
                 }
             } else {
@@ -843,7 +875,7 @@
             answeredQuestionIds.add(currentQuestion.id); 
             isRetryingQuestion = false; 
 
-            saveProgress(); // Save progress after each answer
+            saveProgress(); 
 
             if (currentQuizMode !== 'review') {
                  questionsAnsweredInSession++; 
@@ -853,21 +885,19 @@
                 retryQuestionBtn.classList.remove('hidden');
                 nextQuestionBtn.classList.add('hidden');
             } else if (questionsAnsweredInSession >= questionsToAskInSession) { 
-                nextQuestionBtn.textContent = 'モード選択に戻る';
-                nextQuestionBtn.classList.remove('hidden');
-                retryQuestionBtn.classList.add('hidden'); 
-                nextQuestionBtn.onclick = () => {
-                    showView('modeSelection');
-                    if(nextQuestionBtn) {
-                         nextQuestionBtn.textContent = '次の問題へ';
-                         nextQuestionBtn.onclick = nextQuestion; 
-                    }
-                };
+                if (nextQuestionBtn) {
+                    nextQuestionBtn.textContent = '結果を表示';
+                    nextQuestionBtn.onclick = displayQuizResults;
+                    nextQuestionBtn.classList.remove('hidden');
+                }
+                if (retryQuestionBtn) retryQuestionBtn.classList.add('hidden'); 
             } else { 
-                retryQuestionBtn.classList.add('hidden');
-                nextQuestionBtn.textContent = '次の問題へ';
-                nextQuestionBtn.onclick = nextQuestion; 
-                nextQuestionBtn.classList.remove('hidden');
+                if (retryQuestionBtn) retryQuestionBtn.classList.add('hidden');
+                if (nextQuestionBtn) {
+                    nextQuestionBtn.textContent = '次の問題へ';
+                    nextQuestionBtn.onclick = nextQuestion; 
+                    nextQuestionBtn.classList.remove('hidden');
+                }
             }
         }
 
@@ -878,6 +908,91 @@
             }
             loadQuestion();
         }
+
+        // --- Result Display Functions ---
+        function calculateAndDisplayResults() {
+            if (!overallQuestionsAnsweredEl || !overallCorrectAnswersEl || !overallAccuracyRateEl || !categoryBreakdownList || !quizResultView) {
+                console.error("Result display elements not found.");
+                return;
+            }
+            // Clear previous content of overall stats if it was a message
+            if (overallStatsContainer && overallStatsContainer.firstChild && overallStatsContainer.firstChild.tagName === 'P' && overallStatsContainer.children.length === 1) {
+                 overallStatsContainer.innerHTML = `
+                    <h3 class="text-lg font-semibold mb-2 text-gray-700">全体の成績</h3>
+                    <p id="overallQuestionsAnswered" class="text-gray-600"></p>
+                    <p id="overallCorrectAnswers" class="text-gray-600"></p>
+                    <p id="overallAccuracyRate" class="text-gray-600 font-bold"></p>
+                `;
+                // Re-assign elements after innerHTML overwrite
+                const newOverallQuestionsAnsweredEl = document.getElementById('overallQuestionsAnswered');
+                const newOverallCorrectAnswersEl = document.getElementById('overallCorrectAnswers');
+                const newOverallAccuracyRateEl = document.getElementById('overallAccuracyRate');
+                // Update global references if needed, or pass these new ones to the display logic
+                // For simplicity, this example assumes the original global consts are still valid if this block isn't hit often.
+                // A better approach would be to always target by ID within this function or pass elements.
+            }
+
+
+            const sessionHistory = quizHistory.filter(hist => questionsAnsweredInCurrentQuizSession.has(hist.questionId));
+
+            if (sessionHistory.length === 0) {
+                if(overallStatsContainer) overallStatsContainer.innerHTML = '<p class="text-gray-600">このセッションの解答履歴がありません。</p>';
+                if(categoryBreakdownList) categoryBreakdownList.innerHTML = '';
+                return;
+            }
+            
+            // 全体の統計
+            const totalAnsweredThisSession = sessionHistory.length;
+            const totalCorrectThisSession = sessionHistory.filter(hist => hist.answeredCorrectly).length;
+            const overallAccuracy = totalAnsweredThisSession > 0 ? Math.round((totalCorrectThisSession / totalAnsweredThisSession) * 100) : 0;
+
+            overallQuestionsAnsweredEl.textContent = `総問題数: ${totalAnsweredThisSession} 問`;
+            overallCorrectAnswersEl.textContent = `総正解数: ${totalCorrectThisSession} 問`;
+            overallAccuracyRateEl.textContent = `全体の正答率: ${overallAccuracy}%`;
+            
+            // カテゴリ別の統計
+            const categoryResults = {};
+            sessionHistory.forEach(histEntry => {
+                const questionData = questions.find(q => q.id === histEntry.questionId);
+                if (!questionData) return;
+                const categoryName = questionData.category || "カテゴリなし";
+
+                if (!categoryResults[categoryName]) {
+                    categoryResults[categoryName] = { answered: 0, correct: 0 };
+                }
+                categoryResults[categoryName].answered++;
+                if (histEntry.answeredCorrectly) {
+                    categoryResults[categoryName].correct++;
+                }
+            });
+            
+            categoryBreakdownList.innerHTML = ''; // Clear previous results
+            const sortedCategories = Object.keys(categoryResults).sort();
+
+            if (sortedCategories.length === 0) {
+                categoryBreakdownList.innerHTML = '<p class="text-gray-500">カテゴリ別の成績はありません。</p>';
+            } else {
+                 sortedCategories.forEach(catName => {
+                    const catData = categoryResults[catName];
+                    const catAccuracy = catData.answered > 0 ? Math.round((catData.correct / catData.answered) * 100) : 0;
+                    
+                    const catDiv = document.createElement('div');
+                    catDiv.className = 'p-3 border rounded-md bg-gray-50 shadow-sm';
+                    catDiv.innerHTML = `
+                        <h4 class="font-semibold text-gray-700">${catName}</h4>
+                        <p class="text-sm text-gray-600">正解数 / 出題数: ${catData.correct} / ${catData.answered}</p>
+                        <p class="text-sm text-gray-600">正答率: ${catAccuracy}%</p>
+                    `;
+                    categoryBreakdownList.appendChild(catDiv);
+                });
+            }
+        }
+
+        function displayQuizResults() {
+            calculateAndDisplayResults();
+            showView('quizResult');
+        }
+
 
         if (retryQuestionBtn) {
             retryQuestionBtn.addEventListener('click', () => {
@@ -1197,27 +1312,24 @@
 
         if(backToModeSelectionBtn) { 
             backToModeSelectionBtn.addEventListener('click', () => {
-                currentQuestion = null;
-                currentQuizMode = null;
-                currentSelectedCategory = null;
-                questionsAnsweredInSession = 0;
-                questionsToAskInSession = 0;
-                questionsAnsweredInCurrentQuizSession.clear();
-                incorrectQuestionsForRetrySession = [];
-                showView('modeSelection');
+                showView('modeSelection'); // showView will reset nextQuestionBtn
             });
         }
         if(backToModeSelectionFromListBtn) { 
              backToModeSelectionFromListBtn.addEventListener('click', () => {
-                showView('modeSelection');
+                showView('modeSelection'); // showView will reset nextQuestionBtn
             });
         }
-        if(resetProgressBtn){ // Event listener for reset button
+        if(backToModeSelectionFromResultBtn) { // New button
+             backToModeSelectionFromResultBtn.addEventListener('click', () => {
+                showView('modeSelection'); // showView will reset nextQuestionBtn
+            });
+        }
+        if(resetProgressBtn){ 
             resetProgressBtn.addEventListener('click', () => {
                 if(confirm("すべての解答履歴と進捗をリセットします。よろしいですか？")){
                     clearProgress();
-                    // Optionally, refresh the view or guide the user
-                    showView('modeSelection'); // Go back to mode selection after reset
+                    showView('modeSelection'); 
                 }
             });
         }
@@ -1234,7 +1346,7 @@
                     throw new Error(`HTTP ${response.status} - 「問題集.json」が見つからないか、アクセスできませんでした。`);
                 }
                 const jsonContent = await response.text();
-                processQuestionsJson(jsonContent); // This will now call loadProgress() internally
+                processQuestionsJson(jsonContent);
             } catch (error) {
                 console.error("自動ファイルロードエラー:", error);
                 if (fileLoadStatus) {
@@ -1246,7 +1358,6 @@
             }
         }
         
-        // Save progress on window unload as a fallback (less reliable than per-action save)
         window.addEventListener('beforeunload', saveProgress);
 
         window.onload = async function() {
@@ -1258,17 +1369,15 @@
             if(viewProblemListBtn) viewProblemListBtn.disabled = true;
             if(retryIncorrectBtn) { retryIncorrectBtn.classList.add('hidden'); retryIncorrectBtn.disabled = true; }
 
-
             if(noCategoriesMessage) { noCategoriesMessage.textContent = '問題ファイルをロードしてカテゴリ情報を取得してください。'; noCategoriesMessage.classList.remove('hidden'); }
             if(noProblemsAnsweredMessageEl) { noProblemsAnsweredMessageEl.textContent = '問題ファイルをロードし、クイズに解答してください。';}
             if(noProblemsAllMessageEl) { noProblemsAllMessageEl.textContent = '問題ファイルをロードしてください。';}
 
-
             if(modeSelectionView) modeSelectionView.classList.add('hidden');
 
-            await autoLoadDefaultQuestions(); // This will load questions and then progress
+            await autoLoadDefaultQuestions(); 
 
-             if (questions.length === 0) { // If questions failed to load, ensure modeSelection is shown
+             if (questions.length === 0) { 
                 showView('modeSelection'); 
             }
         };
